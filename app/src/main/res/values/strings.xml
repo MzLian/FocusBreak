@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">FocusBreak</string>
+    <string name="accessibility_service_description">FocusBreak usa este servicio solo para saber qué aplicación está en primer plano y medir tu tiempo de uso. No lee el contenido de tu pantalla ni tus datos personales.</string>
+</resources>
