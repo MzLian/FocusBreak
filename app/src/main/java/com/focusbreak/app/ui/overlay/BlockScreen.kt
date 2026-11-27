@@ -9,15 +9,18 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.focusbreak.app.domain.LimitEvaluator
+import com.focusbreak.app.domain.StepRedeem
 import com.focusbreak.app.domain.formatDuration
 import com.focusbreak.app.ui.components.AppIcon
 import com.focusbreak.app.ui.theme.*
@@ -29,6 +32,14 @@ data class BlockUiState(
     val usedMinutes: Int,
     val limitMinutes: Int,
     val canExtend: Boolean,
+    /** Estado del canje de pasos (HU13); null si no hay sensor o permiso de actividad física. */
+    val redeem: RedeemUi? = null,
+)
+
+data class RedeemUi(
+    val stepsAvailable: Int,   // pasos de hoy aún no canjeados
+    val canRedeem: Boolean,    // hay pasos suficientes y no se alcanzó el tope diario
+    val capReached: Boolean,   // ya se canjeó el máximo de minutos de hoy
 )
 
 private enum class Mode { Limit, Breathing }
@@ -40,18 +51,21 @@ fun BlockScreen(
     onWalk: () -> Unit,
     onExtend: () -> Unit,
     onFinishBreathing: () -> Unit,
+    onRedeem: () -> Unit,
 ) {
     var mode by remember { mutableStateOf(Mode.Limit) }
     Box(Modifier.fillMaxSize().background(ForestDark).padding(horizontal = 28.dp, vertical = 40.dp)) {
         when (mode) {
-            Mode.Limit -> LimitContent(state, onWalk, onBreathe = { mode = Mode.Breathing }, onExtend)
+            Mode.Limit -> LimitContent(state, onWalk, onBreathe = { mode = Mode.Breathing }, onExtend, onRedeem)
             Mode.Breathing -> BreathingContent(onDone = onFinishBreathing, onCancel = { mode = Mode.Limit })
         }
     }
 }
 
 @Composable
-private fun LimitContent(state: BlockUiState, onWalk: () -> Unit, onBreathe: () -> Unit, onExtend: () -> Unit) {
+private fun LimitContent(
+    state: BlockUiState, onWalk: () -> Unit, onBreathe: () -> Unit, onExtend: () -> Unit, onRedeem: () -> Unit,
+) {
     Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Text("LÍMITE ALCANZADO", style = MaterialTheme.typography.labelMedium, color = Lime, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(20.dp))
@@ -70,6 +84,7 @@ private fun LimitContent(state: BlockUiState, onWalk: () -> Unit, onBreathe: () 
             colors = ButtonDefaults.buttonColors(containerColor = Lime, contentColor = ForestDark)) {
             Text("Salir a caminar", fontWeight = FontWeight.Bold)
         }
+        state.redeem?.let { RedeemSection(it, onRedeem) }
         Spacer(Modifier.height(12.dp))
         OutlinedButton(onClick = onBreathe, modifier = Modifier.fillMaxWidth().height(52.dp),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)) {
@@ -77,6 +92,40 @@ private fun LimitContent(state: BlockUiState, onWalk: () -> Unit, onBreathe: () 
         }
         Spacer(Modifier.height(20.dp))
         ExtendOption(state.canExtend, onExtend)
+    }
+}
+
+/** Canje de pasos por minutos extra (HU13): botón si alcanza, o cuánto falta para ganar el siguiente bloque. */
+@Composable
+private fun RedeemSection(redeem: RedeemUi, onRedeem: () -> Unit) {
+    val number = java.text.NumberFormat.getIntegerInstance(java.util.Locale.forLanguageTag("es-PE"))
+    Spacer(Modifier.height(12.dp))
+    when {
+        redeem.canRedeem -> FilledTonalButton(
+            onClick = onRedeem, modifier = Modifier.fillMaxWidth().height(52.dp),
+            colors = ButtonDefaults.filledTonalButtonColors(containerColor = MintSurface, contentColor = ForestDark)
+        ) {
+            Text(
+                "Canjear ${number.format(StepRedeem.STEPS_PER_BLOCK)} pasos por ${StepRedeem.MINUTES_PER_BLOCK} min",
+                fontWeight = FontWeight.Bold
+            )
+        }
+        redeem.capReached -> Text(
+            "Ya canjeaste el máximo de hoy (${StepRedeem.DAILY_CAP_MINUTES} min).",
+            style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.5f), textAlign = TextAlign.Center
+        )
+        else -> Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                "Camina ${number.format(StepRedeem.STEPS_PER_BLOCK - redeem.stepsAvailable)} pasos más y gana ${StepRedeem.MINUTES_PER_BLOCK} min",
+                style = MaterialTheme.typography.bodySmall, color = MintSurface, textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(6.dp))
+            LinearProgressIndicator(
+                progress = { (redeem.stepsAvailable.toFloat() / StepRedeem.STEPS_PER_BLOCK).coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                color = Lime, trackColor = Color.White.copy(alpha = 0.15f),
+            )
+        }
     }
 }
 

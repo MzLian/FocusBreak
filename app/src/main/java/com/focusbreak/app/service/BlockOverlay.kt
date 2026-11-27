@@ -12,21 +12,58 @@ import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.focusbreak.app.ui.overlay.BlockScreen
 import com.focusbreak.app.ui.overlay.BlockUiState
+import com.focusbreak.app.ui.overlay.FocusBlockScreen
+import com.focusbreak.app.ui.overlay.FocusBlockUiState
 import com.focusbreak.app.ui.theme.FocusBreakTheme
 
 /**
- * Dibuja la pantalla de bloqueo sobre la app en uso.
- * Usa TYPE_APPLICATION_OVERLAY si el usuario concedió "Mostrar sobre otras apps"; si no,
- * TYPE_ACCESSIBILITY_OVERLAY, que un servicio de accesibilidad puede usar sin ese permiso.
+ * Dibuja la pantalla de bloqueo sobre la app en uso: la de límite alcanzado (HU08) o la de sesión
+ * de concentración (HU10). Usa TYPE_APPLICATION_OVERLAY si el usuario concedió "Mostrar sobre otras apps";
+ * si no, TYPE_ACCESSIBILITY_OVERLAY, que un servicio de accesibilidad puede usar sin ese permiso.
  */
 class BlockOverlay(private val service: AccessibilityService) {
+
+    private sealed interface Content {
+        class Limit(
+            val ui: BlockUiState,
+            val onWalk: () -> Unit,
+            val onExtend: () -> Unit,
+            val onFinishBreathing: () -> Unit,
+            val onRedeem: () -> Unit,
+        ) : Content
+
+        class Focus(
+            val ui: FocusBlockUiState,
+            val onHome: () -> Unit,
+            val onEnd: () -> Unit,
+            val onExpired: () -> Unit,
+        ) : Content
+    }
+
     private val windowManager = service.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    private val state = mutableStateOf<BlockUiState?>(null)
+    private val content = mutableStateOf<Content?>(null)
     private var view: ComposeView? = null
     private var owner: OverlayLifecycleOwner? = null
 
-    fun show(ui: BlockUiState, onWalk: () -> Unit, onExtend: () -> Unit, onFinishBreathing: () -> Unit) {
-        state.value = ui                      // si ya está visible, solo se actualizan los datos
+    /** true mientras el overlay está dibujado en pantalla. */
+    val isShowing: Boolean get() = view != null
+
+    /** true si lo que se ve es el bloqueo de una sesión de concentración. */
+    val isShowingFocus: Boolean get() = view != null && content.value is Content.Focus
+
+    fun show(
+        ui: BlockUiState,
+        onWalk: () -> Unit,
+        onExtend: () -> Unit,
+        onFinishBreathing: () -> Unit,
+        onRedeem: () -> Unit,
+    ) = present(Content.Limit(ui, onWalk, onExtend, onFinishBreathing, onRedeem))
+
+    fun showFocus(ui: FocusBlockUiState, onHome: () -> Unit, onEnd: () -> Unit, onExpired: () -> Unit) =
+        present(Content.Focus(ui, onHome, onEnd, onExpired))
+
+    private fun present(newContent: Content) {
+        content.value = newContent            // si ya está visible, solo se actualizan los datos
         if (view != null) return
 
         val lifecycleOwner = OverlayLifecycleOwner().also { it.create(); it.resume() }
@@ -35,7 +72,11 @@ class BlockOverlay(private val service: AccessibilityService) {
             setViewTreeSavedStateRegistryOwner(lifecycleOwner)
             setContent {
                 FocusBreakTheme {
-                    state.value?.let { BlockScreen(it, onWalk, onExtend, onFinishBreathing) }
+                    when (val c = content.value) {
+                        is Content.Limit -> BlockScreen(c.ui, c.onWalk, c.onExtend, c.onFinishBreathing, c.onRedeem)
+                        is Content.Focus -> FocusBlockScreen(c.ui, c.onHome, c.onEnd, c.onExpired)
+                        null -> Unit
+                    }
                 }
             }
         }
@@ -47,7 +88,7 @@ class BlockOverlay(private val service: AccessibilityService) {
         } catch (e: Exception) {
             Log.e("FocusBreak", "No se pudo mostrar el overlay", e)
             lifecycleOwner.destroy()
-            state.value = null
+            content.value = null
         }
     }
 
@@ -57,7 +98,7 @@ class BlockOverlay(private val service: AccessibilityService) {
         owner?.destroy()
         view = null
         owner = null
-        state.value = null
+        content.value = null
     }
 
     private fun layoutParams(): WindowManager.LayoutParams {

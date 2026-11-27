@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.focusbreak.app.domain.StepRedeem
 import com.focusbreak.app.domain.DailyGoal
 import com.focusbreak.app.domain.StepGoal
 import com.focusbreak.app.domain.LimitRules
@@ -78,6 +79,7 @@ fun HomeScreen(
         item {
             StepsCard(
                 steps = state.steps, granted = stepsGranted, sensorAvailable = state.stepSensorAvailable,
+                available = state.stepsAvailable, redeemedMinutes = state.redeemedMinutes,
                 onRequestPermission = { permissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION) }
             )
         }
@@ -351,7 +353,10 @@ private fun StreakCard() {
 // ------------------------------------------------------------------ pasos (HU11)
 
 @Composable
-private fun StepsCard(steps: Int, granted: Boolean, sensorAvailable: Boolean, onRequestPermission: () -> Unit) {
+private fun StepsCard(
+    steps: Int, granted: Boolean, sensorAvailable: Boolean,
+    available: Int, redeemedMinutes: Int, onRequestPermission: () -> Unit,
+) {
     val progress = (steps.toFloat() / StepGoal.STEPS).coerceIn(0f, 1f)
     val number = java.text.NumberFormat.getIntegerInstance(Locale.forLanguageTag("es-PE"))
     Card(
@@ -386,6 +391,13 @@ private fun StepsCard(steps: Int, granted: Boolean, sensorAvailable: Boolean, on
                             progress = { progress },
                             modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
                             color = Lime, trackColor = Color(0xFFE6EAE0),
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Canjeables: ${number.format(available)} pasos · " +
+                                if (redeemedMinutes > 0) "hoy ganaste $redeemedMinutes min"
+                                else "${number.format(StepRedeem.STEPS_PER_BLOCK)} pasos = ${StepRedeem.MINUTES_PER_BLOCK} min",
+                            style = MaterialTheme.typography.bodySmall, color = InkMuted,
                         )
                     }
                 }

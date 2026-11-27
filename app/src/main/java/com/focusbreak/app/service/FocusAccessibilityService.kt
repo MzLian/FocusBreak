@@ -7,6 +7,7 @@ import android.provider.Settings
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import com.focusbreak.app.FocusBreakApp
+import com.focusbreak.app.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -37,7 +38,12 @@ class FocusAccessibilityService : AccessibilityService() {
         val own = pkg == packageName
         ForegroundAppTracker.onForeground(pkg, isOwnApp = own)
         // Las ventanas propias (incluido el overlay de bloqueo) no deben reiniciar el motor.
-        if (!own) engine?.onForeground(pkg)
+        if (!own) {
+            engine?.onForeground(pkg)
+        } else if (event.className?.toString() == MainActivity::class.java.name) {
+            // La persona abrió FocusBreak: el motor deja de evaluar la app anterior
+            engine?.onOwnActivityOpened()
+        }
     }
 
     /** El teclado y la UI del sistema abren ventanas propias que no son la app que usa la persona. */
